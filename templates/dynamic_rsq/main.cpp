@@ -5,16 +5,15 @@
 
 using i64 = int64_t;
 
-struct TNode {
-    TNode* LeftChild = nullptr;
-    TNode* RightChild = nullptr;
-    i64 Value;
-    i64 LeftIndex;
-    i64 RightIndex;
-    TNode() = default;
-};
-
 class TSegmentTree {
+    struct TNode {
+        TNode* LeftChild = nullptr;
+        TNode* RightChild = nullptr;
+        i64 Value;
+        i64 LeftIndex;
+        i64 RightIndex;
+        TNode() = default;
+    };
 public:
     TSegmentTree(const std::vector<i64>& vec) {
         std::vector<TNode*> nodes;
