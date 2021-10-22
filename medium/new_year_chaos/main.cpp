@@ -19,26 +19,115 @@ vector<string> split(const string &);
  * The function accepts INTEGER_ARRAY q as parameter.
  */
 
-void minimumBribes(vector<int> q) {
-    std::unordered_map<int, int> counts;
-    int result = 0;
-    while (true) {
-        bool flag = false;
-        for (int i = 0; i < q.size() - 1; ++i) {
-            if (q[i] > q[i + 1]) {
-                ++counts[q[i]];
-                if (counts[q[i]] > 2) {
-                    std::cout << "Too chaotic" << std::endl;
-                    return;
-                }
-                ++result;
-                flag = true;
-                std::swap(q[i], q[i + 1]);
-                break;
-            }
+using i64 = int64_t;
+
+class TSegmentTree {
+    struct TNode {
+        TNode* LeftChild = nullptr;
+        TNode* RightChild = nullptr;
+        i64 Value;
+        i64 LeftIndex;
+        i64 RightIndex;
+        TNode() = default;
+    };
+public:
+    TSegmentTree(const std::vector<i64>& vec) {
+        std::vector<TNode*> nodes;
+        nodes.reserve(vec.size());
+        for (i64 i = 0; i < vec.size(); ++i) {
+            TNode* node = new TNode();
+            node->Value = vec[i];
+            node->LeftIndex = i;
+            node->RightIndex = i + 1;
+            nodes.push_back(node);
         }
-        if (!flag) {
-            break;
+        std::vector<TNode*> nodes2;
+        nodes2.reserve(nodes.size() / 2 + 1);
+        while (true) {
+            for (i64 i = 0; i < nodes.size(); i += 2) {
+                TNode* left = nodes[i];
+                if (i + 1 >= nodes.size()) { // no right child here!
+                    nodes2.push_back(left);
+                    continue;
+                }
+                TNode* right = nodes[i + 1];
+                TNode* node = new TNode();
+                node->LeftChild = left;
+                node->RightChild = right;
+                node->Value = left->Value + right->Value;
+                node->LeftIndex = left->LeftIndex;
+                node->RightIndex = right->RightIndex;
+                nodes2.push_back(node);
+            }
+            if (nodes2.size() == 1) {
+                Root_ = nodes2[0];
+                return;
+            }
+            std::swap(nodes, nodes2);
+            nodes2.clear();
+        }
+    }
+    void Update(i64 index, i64 newValue) {
+        UpdateInner(index, newValue, Root_);
+    }
+    i64 CalcSum(i64 left, i64 right) { // [left, right)
+        return CalcSumInner(left, right, Root_);
+    }
+private:
+    TNode* Root_ = nullptr;
+    void UpdateInner(i64 index, i64 newValue, TNode* node) {
+        if (index < node->LeftIndex || index >= node->RightIndex) {
+            return;
+        }
+        if (index == node->LeftIndex && index == node->RightIndex - 1) {
+            node->Value = newValue;
+            return;
+        }   
+        i64 newSum = 0;
+        if (node->LeftChild) {
+            UpdateInner(index, newValue, node->LeftChild);
+            newSum += node->LeftChild->Value;
+        }
+        if (node->RightChild) {
+            UpdateInner(index, newValue, node->RightChild);
+            newSum += node->RightChild->Value;
+        }
+        node->Value = newSum;
+    }
+    i64 CalcSumInner(i64 left, i64 right, TNode* node) {
+        if (node->RightIndex <= left || node->LeftIndex >= right) {
+            return 0;
+        }
+        if (node->LeftIndex == left && node->RightIndex == right) {
+            return node->Value;
+        }
+        i64 sum = 0;
+        if (node->LeftChild) {
+            sum += CalcSumInner(left, std::min(node->LeftChild->RightIndex, right), node->LeftChild);
+        }
+        if (node->RightChild) {
+            sum += CalcSumInner(std::max(node->RightChild->LeftIndex, left), right, node->RightChild);
+        }
+        return sum;
+    }
+};
+
+void minimumBribes(vector<int> q) {
+    std::vector<i64> vec(q.size(), 0);
+    TSegmentTree tree(vec);
+    i64 result = 0;
+    for (i64 i = 0; i < q.size(); ++i) {
+        i64 offset = tree.CalcSum(q[i], q.size());
+        i64 trueCurrentPos = i - offset;
+        i64 expectedPos = q[i] - 1;
+        i64 delta = expectedPos - trueCurrentPos;
+        if (delta > 2) {
+            std::cout << "Too chaotic" << std::endl;
+            return;
+        }
+        tree.Update(expectedPos, 1);
+        if (delta > 0) {
+            result += delta;
         }
     }
     std::cout << result << std::endl;
