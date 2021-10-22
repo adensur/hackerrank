@@ -4,6 +4,7 @@ import sys
 
 def main():
     binary = sys.argv[1]
+    count = 0
     for s in os.listdir():
         if s.startswith("test"):
             assert s.endswith(".tsv"), "Expected format: test01.tsv, found {}".format(s)
@@ -17,6 +18,9 @@ def main():
                 binary_cmd = [binary]
                 subprocess.check_call(binary_cmd, stdin=cat.stdout, stdout=f)
             subprocess.check_call(["diff", output_filename, expected_filename])
+            count += 1
+    print("{} success!".format(count))
+    assert count > 0
 
 
 if __name__ == "__main__":
