@@ -7,75 +7,100 @@ using i64 = int64_t;
 constexpr i64 Inf = std::numeric_limits<i64>::max();
 
 class TSegmentTree {
-private:
     struct TNode {
-        i64 Value = Inf;
+        TNode* LeftChild = nullptr;
+        TNode* RightChild = nullptr;
+        i64 Value;
+        i64 LeftIndex;
+        i64 RightIndex;
+        TNode() = default;
         i64 AddModification = 0;
     };
-    i64 GetInnerIndex(i64 index) {
-        // maps external index to final layer of the tree
-        return index + Size_ / 2 - 1;
-    }
-    i64 GetLeftChild(i64 index) {
-        return 2 * index + 1;
-    }
-    i64 GetRightChild(i64 index) {
-        return 2 * index + 2;
-    }
 public:
     TSegmentTree(const std::vector<i64>& vec) {
-        Size_ = pow(2, 1 + ceil(log2(vec.size())));
-        Nodes_.resize(Size_, TNode());
+        std::vector<TNode*> nodes;
+        nodes.reserve(vec.size());
         for (i64 i = 0; i < vec.size(); ++i) {
-            Nodes_[GetInnerIndex(i)].Value = vec[i];
+            TNode* node = new TNode();
+            node->Value = vec[i];
+            node->LeftIndex = i;
+            node->RightIndex = i + 1;
+            nodes.push_back(node);
         }
-        for (i64 i = Size_ / 2 - 2; i >= 0; --i) {
-            Nodes_[i].Value = std::min(Nodes_[GetLeftChild(i)].Value, Nodes_[GetRightChild(i)].Value);
+        std::vector<TNode*> nodes2;
+        nodes2.reserve(nodes.size() / 2 + 1);
+        while (true) {
+            for (i64 i = 0; i < nodes.size(); i += 2) {
+                TNode* left = nodes[i];
+                if (i + 1 >= nodes.size()) { // no right child here!
+                    nodes2.push_back(left);
+                    continue;
+                }
+                TNode* right = nodes[i + 1];
+                TNode* node = new TNode();
+                node->LeftChild = left;
+                node->RightChild = right;
+                node->Value = std::min(left->Value, right->Value);
+                node->LeftIndex = left->LeftIndex;
+                node->RightIndex = right->RightIndex;
+                nodes2.push_back(node);
+            }
+            if (nodes2.size() == 1) {
+                Root_ = nodes2[0];
+                return;
+            }
+            std::swap(nodes, nodes2);
+            nodes2.clear();
         }
     }
-    i64 CalcMin(i64 queryLeft, i64 queryRight) { // [left, right)
-        return CalcMinInner(queryLeft, queryRight, /* node = */ 0, /* left = */ 0, /* right = */ Size_ / 2);
+    i64 CalcMin(i64 left, i64 right) { // [left, right)
+        return CalcMinInner(left, right, Root_);
     }
-    void GroupAdd(i64 queryLeft, i64 queryRight, i64 addValue) {
-        GroupAddInner(queryLeft, queryRight, addValue, /* node = */ 0, /* left = */ 0, /* right = */ Size_ / 2);
+    void GroupAdd(i64 left, i64 right, i64 addValue) {
+        GroupAddInner(left, right, addValue, Root_);
     }
 private:
-    i64 Size_ = 0;
-    std::vector<TNode> Nodes_;
-    i64 CalcMinInner(i64 queryLeft, i64 queryRight, i64 node, i64 left, i64 right) {
-        if (right <= queryLeft || left >= queryRight) {
+    TNode* Root_ = nullptr;
+    i64 CalcMinInner(i64 left, i64 right, TNode* node) {
+        if (node->RightIndex <= left || node->LeftIndex >= right) {
             return Inf;
         }
-        if (left == queryLeft && right == queryRight) {
-            return Nodes_[node].Value + Nodes_[node].AddModification;
+        if (node->LeftIndex == left && node->RightIndex == right) {
+            return node->Value + node->AddModification;
         }
         PropagateModification(node);
-        i64 middle = (left + right) / 2;
-        i64 min = std::min(CalcMinInner(queryLeft, std::min(middle, queryRight), GetLeftChild(node), left, middle),
-            CalcMinInner(std::max(middle, queryLeft), queryRight, GetRightChild(node), middle, right));
+        i64 min = CalcMinInner(left, std::min(node->LeftChild->RightIndex, right), node->LeftChild);
+        if (node->RightChild) {
+            min = std::min(min, CalcMinInner(std::max(node->RightChild->LeftIndex, left), right, node->RightChild));
+        }
         return min;
     }
-    void GroupAddInner(i64 queryLeft, i64 queryRight, i64 addValue, i64 node, i64 left, i64 right) {
-        if (right <= queryLeft || left >= queryRight) {
+    void GroupAddInner(i64 left, i64 right, i64 addValue, TNode* node) {
+        if (node->RightIndex <= left || node->LeftIndex >= right) {
             return;
         }
-        if (left == queryLeft && right == queryRight) {
-            Nodes_[node].AddModification += addValue;
+        if (node->LeftIndex == left && node->RightIndex == right) {
+            node->AddModification += addValue;
             return;
         }
         PropagateModification(node);
-        i64 middle = (left + right) / 2;
-        GroupAddInner(queryLeft, std::min(middle, queryRight), addValue, GetLeftChild(node), left, middle);
-        GroupAddInner(std::max(middle, queryLeft), queryRight, addValue, GetRightChild(node), middle, right);
-        Nodes_[node].Value = std::min(Nodes_[GetLeftChild(node)].Value + Nodes_[GetLeftChild(node)].AddModification,
-            Nodes_[GetRightChild(node)].Value + Nodes_[GetRightChild(node)].AddModification);
+        GroupAddInner(left, std::min(node->LeftChild->RightIndex, right), addValue, node->LeftChild);
+        node->Value = node->LeftChild->Value + node->LeftChild->AddModification;
+        if (node->RightChild) {
+            GroupAddInner(std::max(node->RightChild->LeftIndex, left), right, addValue, node->RightChild);
+            node->Value = std::min(node->Value, node->RightChild->Value + node->RightChild->AddModification);
+        }
     }
-    void PropagateModification(i64 node) {
+    void PropagateModification(TNode* node) {
         // propagate modification one step - from node to its children, applies to current node
-        Nodes_[GetLeftChild(node)].AddModification += Nodes_[node].AddModification;
-        Nodes_[GetRightChild(node)].AddModification += Nodes_[node].AddModification;
-        Nodes_[node].Value += Nodes_[node].AddModification;
-        Nodes_[node].AddModification = 0;
+        if (node->LeftChild) {
+            node->LeftChild->AddModification += node->AddModification;
+        }
+        if (node->RightChild) {
+            node->RightChild->AddModification += node->AddModification;
+        }
+        node->Value += node->AddModification;
+        node->AddModification = 0;
     }
 };
 
@@ -118,76 +143,6 @@ int main() {
         i64 i = 0;
         {
             ++i;
-            // 4
-            std::vector<i64> vec = {9,3,8,0,2,4,8,3};
-            TSegmentTree tree(vec);
-            i64 left = 7;
-            i64 right = 8;
-            i64 min = tree.CalcMin(left, right);
-            i64 expected = CalcMinNaive(vec, left, right);
-            if (min != expected) {
-                std::cout << "Error on case #" << i << " vec " << ToString(vec) << "; left: " << left << "; right: " << right << "; expected: " << expected << " got: " << min << std::endl;
-                throw std::runtime_error("");
-            }
-        }
-        {
-            ++i;
-            std::vector<i64> vec = {9, 3, 8, 0, 2, 4, 8, 3};
-            TSegmentTree tree(vec);
-            {
-                i64 leftUpdate = 5;
-                i64 rightUpdate = 6;
-                i64 updateAdd = 42;
-                GroupUpdateNaive(leftUpdate, rightUpdate, updateAdd, vec);
-                tree.GroupAdd(leftUpdate, rightUpdate, updateAdd);
-            }
-            i64 left = 3;
-            i64 right = 7;
-            i64 min = tree.CalcMin(left, right);
-            i64 expected = CalcMinNaive(vec, left, right);
-            if (min != expected) {
-                std::cout << "Error on case #" << i << " vec " << ToString(vec) << "; left: " << left << "; right: " << right << "; expected: " << expected << " got: " << min << std::endl;
-                throw std::runtime_error("");
-            }
-        }
-        {
-            ++i;
-            // 1
-            std::vector<i64> vec = {9,3,8,0,2,4,8,3};
-            TSegmentTree tree(vec);
-            i64 left = 4;
-            i64 right = 8;
-            i64 min = tree.CalcMin(left, right);
-            i64 expected = CalcMinNaive(vec, left, right);
-            if (min != expected) {
-                std::cout << "Error on case #" << i << " vec " << ToString(vec) << "; left: " << left << "; right: " << right << "; expected: " << expected << " got: " << min << std::endl;
-                throw std::runtime_error("");
-            }
-        }
-        {
-            ++i;
-            // 2
-            std::vector<i64> vec = {9,3,8,0,2,4,8,3};
-            TSegmentTree tree(vec);
-            {
-                i64 leftUpdate = 5;
-                i64 rightUpdate = 6;
-                i64 updateAdd = 42;
-                GroupUpdateNaive(leftUpdate, rightUpdate, updateAdd, vec);
-                tree.GroupAdd(leftUpdate, rightUpdate, updateAdd);
-            }
-            i64 left = 4;
-            i64 right = 8;
-            i64 min = tree.CalcMin(left, right);
-            i64 expected = CalcMinNaive(vec, left, right);
-            if (min != expected) {
-                std::cout << "Error on case #" << i << " vec " << ToString(vec) << "; left: " << left << "; right: " << right << "; expected: " << expected << " got: " << min << std::endl;
-                throw std::runtime_error("");
-            }
-        }
-        {
-            ++i;
-            // 3
             std::vector<i64> vec = {9,3,8,0,2,4,8,3};
             TSegmentTree tree(vec);
             {
@@ -209,7 +164,68 @@ int main() {
             i64 min = tree.CalcMin(left, right);
             i64 expected = CalcMinNaive(vec, left, right);
             if (min != expected) {
-                std::cout << "Error on case #" << i << " vec " << ToString(vec) << "; left: " << left << "; right: " << right << "; expected: " << expected << " got: " << min << std::endl;
+                std::cout << "Error on vec " << ToString(vec) << "; left: " << left << "; right: " << right << "; expected: " << expected << " got: " << min << std::endl;
+                throw std::runtime_error("");
+            }
+        }
+        {
+            ++i;
+            std::vector<i64> vec = {9,3,8,0,2,4,8,3};
+            TSegmentTree tree(vec);
+            {
+                i64 leftUpdate = 5;
+                i64 rightUpdate = 6;
+                i64 updateAdd = 42;
+                GroupUpdateNaive(leftUpdate, rightUpdate, updateAdd, vec);
+                tree.GroupAdd(leftUpdate, rightUpdate, updateAdd);
+            }
+            {
+                i64 leftUpdate = 7;
+                i64 rightUpdate = 8;
+                i64 updateAdd = 840;
+                GroupUpdateNaive(leftUpdate, rightUpdate, updateAdd, vec);
+                tree.GroupAdd(leftUpdate, rightUpdate, updateAdd);
+            }
+            {
+                i64 leftUpdate = 1;
+                i64 rightUpdate = 3;
+                i64 updateAdd = 157;
+                GroupUpdateNaive(leftUpdate, rightUpdate, updateAdd, vec);
+                tree.GroupAdd(leftUpdate, rightUpdate, updateAdd);
+            }
+            {
+                i64 leftUpdate = 3;
+                i64 rightUpdate = 7;
+                i64 updateAdd = 816;
+                GroupUpdateNaive(leftUpdate, rightUpdate, updateAdd, vec);
+                tree.GroupAdd(leftUpdate, rightUpdate, updateAdd);
+            }
+            i64 left = 7;
+            i64 right = 8;
+            i64 min = tree.CalcMin(left, right);
+            i64 expected = CalcMinNaive(vec, left, right);
+            if (min != expected) {
+                std::cout << "Error on vec " << ToString(vec) << "; left: " << left << "; right: " << right << "; expected: " << expected << " got: " << min << std::endl;
+                throw std::runtime_error("");
+            }
+        }
+        {
+            ++i;
+            std::vector<i64> vec = {9, 3, 8, 0, 2, 4, 8, 3};
+            TSegmentTree tree(vec);
+            {
+                i64 leftUpdate = 5;
+                i64 rightUpdate = 6;
+                i64 updateAdd = 42;
+                GroupUpdateNaive(leftUpdate, rightUpdate, updateAdd, vec);
+                tree.GroupAdd(leftUpdate, rightUpdate, updateAdd);
+            }
+            i64 left = 3;
+            i64 right = 7;
+            i64 min = tree.CalcMin(left, right);
+            i64 expected = CalcMinNaive(vec, left, right);
+            if (min != expected) {
+                std::cout << "Error on vec " << ToString(vec) << "; left: " << left << "; right: " << right << "; expected: " << expected << " got: " << min << std::endl;
                 throw std::runtime_error("");
             }
         }
@@ -222,7 +238,7 @@ int main() {
             i64 min = tree.CalcMin(left, right);
             i64 expected = CalcMinNaive(vec, left, right);
             if (min != expected) {
-                std::cout << "Error on case #" << i << " vec " << ToString(vec) << "; left: " << left << "; right: " << right << "; expected: " << expected << " got: " << min << std::endl;
+                std::cout << "Error on vec " << ToString(vec) << "; left: " << left << "; right: " << right << "; expected: " << expected << " got: " << min << std::endl;
                 throw std::runtime_error("");
             }
         }
@@ -235,7 +251,7 @@ int main() {
             i64 min = tree.CalcMin(left, right);
             i64 expected = CalcMinNaive(vec, left, right);
             if (min != expected) {
-                std::cout << "Error on case #" << i << " vec " << ToString(vec) << "; left: " << left << "; right: " << right << "; expected: " << expected << " got: " << min << std::endl;
+                std::cout << "Error on vec " << ToString(vec) << "; left: " << left << "; right: " << right << "; expected: " << expected << " got: " << min << std::endl;
                 throw std::runtime_error("");
             }
         }
@@ -248,7 +264,7 @@ int main() {
             i64 min = tree.CalcMin(left, right);
             i64 expected = CalcMinNaive(vec, left, right);
             if (min != expected) {
-                std::cout << "Error on case #" << i << " vec " << ToString(vec) << "; left: " << left << "; right: " << right << "; expected: " << expected << " got: " << min << std::endl;
+                std::cout << "Error on vec " << ToString(vec) << "; left: " << left << "; right: " << right << "; expected: " << expected << " got: " << min << std::endl;
                 throw std::runtime_error("");
             }
         }
